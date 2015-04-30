@@ -78,6 +78,8 @@ namespace InfernalRobotics.Module
         [KSPField(isPersistant = true, guiActive = true, guiActiveEditor = true, guiName = "Translation")] public float translation = 0f;
         [KSPField(isPersistant = true)] public float translationDelta = 0;
         [KSPField(isPersistant = true)] public string presetPositionsSerialized = "";
+        [KSPField(isPersistant = true)]
+        public float defaultPosition = 0;
         [KSPField(isPersistant = false)] public string bottomNode = "bottom";
         [KSPField(isPersistant = false)] public bool debugColliders = false;
         [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = true, guiName = "Electric Charge required", guiUnits = "EC/s")] public float electricChargeRequired = 2.5f;
@@ -240,7 +242,7 @@ namespace InfernalRobotics.Module
 
         public float GetStepIncrement()
         {
-            return rotateJoint ? 1f : 0.05f;
+            return rotateJoint ? 1f : 0.01f;
         }
 
         public void UpdateState()
@@ -340,7 +342,7 @@ namespace InfernalRobotics.Module
 
             ColliderizeChilds(ModelTransform);
 
-            limitTweakableFlag = rotateLimits;
+            limitTweakableFlag = limitTweakableFlag | rotateLimits;
 
             try
             {
@@ -446,17 +448,6 @@ namespace InfernalRobotics.Module
 
             GameScenes scene = HighLogic.LoadedScene;
 
-            
-            //TODO get rid of this hardcoded non-sense
-
-            if (scene == GameScenes.FLIGHT)
-            {
-                if (part.name.Contains("Gantry"))
-                {
-                    FixedMeshTransform.Translate(-translateAxis*translation*2);
-                }
-            }
-
             if (scene == GameScenes.EDITOR)
             {
                 if (rotateJoint)
@@ -465,8 +456,7 @@ namespace InfernalRobotics.Module
                 }
                 else
                 {
-                    float gantryCorrection = part.name.Contains("Gantry") ? -1 : 1;
-                    FixedMeshTransform.Translate(translateAxis * translation * gantryCorrection);
+                    FixedMeshTransform.Translate(translateAxis * translation);
                 }
             }
 
@@ -634,7 +624,8 @@ namespace InfernalRobotics.Module
             Logger.Log("[MMT] OnStart Start", Logger.Level.Debug);
 
             //part.stackIcon.SetIcon(DefaultIcons.STRUT);
-            limitTweakableFlag = rotateLimits;
+            limitTweakableFlag = limitTweakableFlag | rotateLimits;
+
             if (!float.IsNaN(Position))
                 Interpolator.Position = Position;
 
@@ -931,25 +922,30 @@ namespace InfernalRobotics.Module
             }
         }
 
-        public void Resized(float factor)
+        public void OnRescale(float factor)
         {
             if (rotateJoint)
                 return;
 
-            // TODO translate limits should be treated here
-            // => enable here when we remove them from the tweakScale configs (BREAKING CHANGE)
+            // TODO translate limits should be treated here if we ever want to unify
+            // translation and rotation in the part configs
+            // => enable here when we remove them from the tweakScale configs
             //translateMin *= factor;
             //translateMax *= factor;
 
-            translation  *= factor;
             minTweak *= factor;
             maxTweak *= factor;
 
-            // TweakScale considers the origin of the moving mesh as the part center
-            // so if translation!=0, the fixed mesh moves.
-            // Not sure what we'd have to do to repair that.
+            // The part center is the origin of the moving mesh
+            // so if translation!=0, the fixed mesh moves on rescale.
+            // We need to move the part back so the fixed mesh stays at the same place.
+            transform.Translate(-translateAxis * translation * (factor-1f) );
+
+            if (HighLogic.LoadedSceneIsEditor)
+                translation *= factor;
 
             // update the window so the new limits are applied
+            UpdateMinMaxTweaks();
             UIPartActionWindow[] actionWindows = FindObjectsOfType<UIPartActionWindow>();
             if (actionWindows.Length > 0)
             {
@@ -1205,7 +1201,11 @@ namespace InfernalRobotics.Module
         [KSPAction("Move To Next Preset")]
         public void MoveNextPresetAction(KSPActionParam param)
         {
-            switch (param.type)
+            if (Translator.IsMoving())
+                Translator.Stop();
+            else
+                MoveNextPreset();
+            /*switch (param.type)
             {
                 case KSPActionType.Activate:
                     MoveNextPreset ();
@@ -1213,13 +1213,18 @@ namespace InfernalRobotics.Module
                 case KSPActionType.Deactivate:
                     Translator.Stop();
                     break;
-            }
+            }*/
         }
 
         [KSPAction("Move To Previous Preset")]
         public void MovePrevPresetAction(KSPActionParam param)
         {
-            switch (param.type)
+            if (Translator.IsMoving())
+                Translator.Stop();
+            else
+                MovePrevPreset();
+
+            /*switch (param.type)
             {
                 case KSPActionType.Activate:
                     MovePrevPreset ();
@@ -1227,7 +1232,7 @@ namespace InfernalRobotics.Module
                 case KSPActionType.Deactivate:
                     Translator.Stop();
                     break;
-            }
+            }*/
         }
 
 
@@ -1315,15 +1320,14 @@ namespace InfernalRobotics.Module
             if (rotateJoint)
             {
                 rotation += deltaPos;
-                FixedMeshTransform.Rotate(-rotateAxis*deltaPos, Space.Self);
-                transform.Rotate(rotateAxis*deltaPos, Space.Self);
+                FixedMeshTransform.Rotate(-rotateAxis, deltaPos, Space.Self);
+                transform.Rotate(rotateAxis, deltaPos, Space.Self);
             }
             else
             {
                 translation += deltaPos;
-                float gantryCorrection = part.name.Contains("Gantry") ? -1f : 1f;
-                transform.Translate(-translateAxis * gantryCorrection*deltaPos);
-                FixedMeshTransform.Translate(translateAxis * gantryCorrection*deltaPos);
+                transform.Translate(-translateAxis * deltaPos);
+                FixedMeshTransform.Translate(translateAxis * deltaPos);
             }
         }
 
@@ -1343,11 +1347,11 @@ namespace InfernalRobotics.Module
         {
             if(rotateJoint)
             {
-                ApplyDeltaPos(-rotation);
+                ApplyDeltaPos(defaultPosition-rotation);
             }
             else if (translateJoint)
             {
-                ApplyDeltaPos(-translation);
+                ApplyDeltaPos(defaultPosition-translation);
             }
         }
 
