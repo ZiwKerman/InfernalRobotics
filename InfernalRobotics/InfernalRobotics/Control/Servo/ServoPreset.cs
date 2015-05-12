@@ -50,12 +50,13 @@ namespace InfernalRobotics.Control.Servo
 
             rawServo.presetPositionsSerialized = rawServo.SerializePresets();
 
-            if (symmetry && rawServo.part.symmetryCounterparts.Count > 1)
+            if (symmetry && rawServo.part.symmetryCounterparts.Count >= 1)
             {
                 foreach (Part part in rawServo.part.symmetryCounterparts)
                 {
-                    ((MuMechToggle)part.Modules["MuMechToggle"]).presetPositionsSerialized = rawServo.presetPositionsSerialized;
-                    ((MuMechToggle)part.Modules["MuMechToggle"]).ParsePresetPositions();
+                    var module = ((MuMechToggle)part.Modules ["MuMechToggle"]);
+                    module.presetPositionsSerialized = rawServo.presetPositionsSerialized;
+                    module.ParsePresetPositions();
                 }
             }
         }
