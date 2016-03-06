@@ -120,7 +120,7 @@ namespace InfernalRobotics.API
             }
 
             LogFormatted("Got Instance, Creating Wrapper Objects");
-            IRController = new InfernalRoboticsAPI(ActualServoController);
+            IRController = new InfernalRoboticsAPI();
             isWrapped = true;
             return true;
         }
@@ -132,22 +132,24 @@ namespace InfernalRobotics.API
             private PropertyInfo apiReady;
             private object actualServoGroups;
 
-            public InfernalRoboticsAPI(object irServoController)
+            public InfernalRoboticsAPI()
             {
                 DetermineReady();
-                BuildServoGroups(irServoController);
+                BuildServoGroups();
             }
 
-            private void BuildServoGroups(object irServoController)
+            private void BuildServoGroups()
             {
-                LogFormatted("Getting ServoGroups Object");
                 var servoGroupsField = IRServoControllerType.GetField("ServoGroups");
                 if (servoGroupsField == null)
                     LogFormatted("Failed Getting ServoGroups fieldinfo");
+                else if (IRWrapper.ActualServoController == null)
+                {
+                    LogFormatted("ServoController Instance not found");
+                }
                 else
                 {
-                    actualServoGroups = servoGroupsField.GetValue(irServoController);
-                    LogFormatted("Success: " + (actualServoGroups != null));
+                    actualServoGroups = servoGroupsField.GetValue(IRWrapper.ActualServoController);
                 }
             }
 
@@ -162,7 +164,7 @@ namespace InfernalRobotics.API
             {
                 get
                 {
-                    if (apiReady == null)
+                    if (apiReady == null || actualServoGroups == null)
                         return false;
 
                     return (bool)apiReady.GetValue(null, null);
@@ -173,6 +175,7 @@ namespace InfernalRobotics.API
             {
                 get
                 {
+                    BuildServoGroups ();
                     return ExtractServoGroups(actualServoGroups);
                 }
             }
@@ -181,7 +184,7 @@ namespace InfernalRobotics.API
             {
                 var listToReturn = new List<IControlGroup>();
 
-                if(servoGroups == null)
+                if (servoGroups == null)
                     return listToReturn;
 
                 try
@@ -205,6 +208,7 @@ namespace InfernalRobotics.API
             private readonly object actualControlGroup;
 
             private PropertyInfo nameProperty;
+            private PropertyInfo vesselProperty;
             private PropertyInfo forwardKeyProperty;
             private PropertyInfo expandedProperty;
             private PropertyInfo speedProperty;
@@ -227,6 +231,7 @@ namespace InfernalRobotics.API
             private void FindProperties()
             {
                 nameProperty = IRControlGroupType.GetProperty("Name");
+                vesselProperty = IRControlGroupType.GetProperty("Vessel");
                 forwardKeyProperty = IRControlGroupType.GetProperty("ForwardKey");
                 reverseKeyProperty = IRControlGroupType.GetProperty("ReverseKey");
                 speedProperty = IRControlGroupType.GetProperty("Speed");
@@ -250,6 +255,11 @@ namespace InfernalRobotics.API
             {
                 get { return (string)nameProperty.GetValue(actualControlGroup, null); }
                 set { nameProperty.SetValue(actualControlGroup, value, null); }
+            }
+
+            public Vessel Vessel
+            {
+                get { return vesselProperty != null ? (Vessel)vesselProperty.GetValue(actualControlGroup, null) : null; }
             }
 
             public string ForwardKey
@@ -595,6 +605,9 @@ namespace InfernalRobotics.API
         {
             string Name { get; set; }
 
+            //can only be used in Flight, null checking is mandatory
+            Vessel Vessel { get; }
+
             string ForwardKey { get; set; }
 
             string ReverseKey { get; set; }
@@ -621,6 +634,8 @@ namespace InfernalRobotics.API
         public interface IServo : IEquatable<IServo>
         {
             string Name { get; set; }
+
+            uint UID { get; }
 
             bool Highlight { set; }
 

@@ -6,14 +6,28 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Collections.Generic;
 using UnityEngine;
 using File = System.IO.File;
 
 namespace InfernalRobotics.Gui
 {
-    [KSPAddon(KSPAddon.Startup.EveryScene, false)]
+    [KSPAddon(KSPAddon.Startup.Flight, false)]
+    public class IRGUIFlight : ControlsGUI
+    {
+        public override string AddonName { get { return this.name; } }
+    }
+
+    [KSPAddon(KSPAddon.Startup.EditorAny, false)]
+    public class IRGUIEditor : ControlsGUI
+    {
+        public override string AddonName { get { return this.name; } }
+    }
+
     public class ControlsGUI : MonoBehaviour
     {
+        public virtual String AddonName { get; set; }
+
         private static Rect controlWindowPos;
         private static Rect editorWindowPos;
         private static Rect presetWindowPos;
@@ -41,11 +55,10 @@ namespace InfernalRobotics.Gui
         private static bool guiSetupDone;
         private IButton irMinimizeButton;
         private ApplicationLauncherButton button;
+        private static Texture2D buttonTexture;
         private bool guiGroupEditorEnabled;
         private bool guiPresetsEnabled;
         private IServo associatedServo;
-        private string tmpMax = "";
-        private string tmpMin = "";
         private bool guiPresetMode;
         private bool guiHidden;
         private string tooltipText = "";
@@ -70,6 +83,8 @@ namespace InfernalRobotics.Gui
             resetWindow = false;
             useElectricCharge = true;
             guiSetupDone = false;
+            buttonTexture = new Texture2D(36, 36, TextureFormat.RGBA32, false);
+            TextureLoader.LoadImageFromFile (buttonTexture, "icon_button.png");
 
             string assemblyName = Assembly.GetExecutingAssembly().GetName().Name;
             //basic constructor to initialize windowIDs
@@ -143,9 +158,10 @@ namespace InfernalRobotics.Gui
 
         private void Awake()
         {
+            
             LoadConfigXml();
 
-            Logger.Log("[GUI] awake");
+            Logger.Log("[GUI] awake, Mode: " + AddonName);
 
             GUIEnabled = false;
 
@@ -160,6 +176,8 @@ namespace InfernalRobotics.Gui
             else
             {
                 guiController = null;
+                //actually we don't need to go further if it's not flight or editor
+                return;
             }
 
             if (ToolbarManager.ToolbarAvailable)
@@ -208,13 +226,10 @@ namespace InfernalRobotics.Gui
 
             try
             {
-                var texture = new Texture2D(36, 36, TextureFormat.RGBA32, false);
-                texture.LoadImage(File.ReadAllBytes(Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "../Textures/icon_button.png")));
-
                 button = ApplicationLauncher.Instance.AddModApplication(delegate { GUIEnabled = true; },
                     delegate { GUIEnabled = false; }, null, null, null, null,
                     ApplicationLauncher.AppScenes.FLIGHT | ApplicationLauncher.AppScenes.VAB |
-                    ApplicationLauncher.AppScenes.SPH, texture);
+                    ApplicationLauncher.AppScenes.SPH, buttonTexture);
 
                 ApplicationLauncher.Instance.AddOnHideCallback(OnHideCallback);
             }
@@ -277,270 +292,315 @@ namespace InfernalRobotics.Gui
             Logger.Log("[GUI] OnDestroy finished successfully", Logger.Level.Debug);
         }
 
+        private void DrawControlGroup (ServoController.ControlGroup g)
+        {
+            const int BUTTON_HEIGHT = 22;
+
+            if (g.Servos.Any())
+            {
+                GUILayout.BeginHorizontal();
+
+                if (g.Expanded)
+                {
+                    g.Expanded = !GUILayout.Button(TextureLoader.CollapseIcon, buttonStyle, GUILayout.Width(20), GUILayout.Height(BUTTON_HEIGHT));
+                }
+                else
+                {
+                    g.Expanded = GUILayout.Button(TextureLoader.ExpandIcon, buttonStyle, GUILayout.Width(20), GUILayout.Height(BUTTON_HEIGHT));
+                }
+
+                nameStyle.fontStyle = FontStyle.Bold;
+
+                GUILayout.Label(g.Name, nameStyle, GUILayout.ExpandWidth(true), GUILayout.Height(BUTTON_HEIGHT));
+
+                nameStyle.fontStyle = FontStyle.Normal;
+
+                g.Speed = GUILayout.TextField(g.Speed, GUILayout.Width(30), GUILayout.Height(BUTTON_HEIGHT));
+
+                Rect last = GUILayoutUtility.GetLastRect();
+                Vector2 pos = Event.current.mousePosition;
+                if (last.Contains(pos) && Event.current.type == EventType.Repaint)
+                    tooltipText = "Speed Multiplier";
+
+                bool toggleVal = GUILayout.Toggle(g.MovingNegative, new GUIContent(TextureLoader.LeftToggleIcon, "Toggle Move -"), buttonStyle,
+                    GUILayout.Width(28), GUILayout.Height(BUTTON_HEIGHT));
+
+                SetTooltipText();
+
+                if (g.MovingNegative != toggleVal)
+                {
+                    if (!toggleVal) g.Stop();
+                    g.MovingNegative = toggleVal;
+                }
+
+                if (g.MovingNegative)
+                {
+                    g.MovingPositive = false;
+                    g.MoveLeft();
+                }
+
+                if (guiPresetMode)
+                {
+                    if (GUILayout.Button(new GUIContent(TextureLoader.PrevIcon, "Previous Preset"), buttonStyle, GUILayout.Width(22), GUILayout.Height(BUTTON_HEIGHT)))
+                    {
+                        //reset any group toggles
+                        g.MovingNegative = false;
+                        g.MovingPositive = false;
+
+                        g.MovePrevPreset();
+                    }
+                    SetTooltipText();
+
+                    if (GUILayout.Button(new GUIContent(TextureLoader.AutoRevertIcon, "Reset"), buttonStyle, GUILayout.Width(22), GUILayout.Height(BUTTON_HEIGHT)))
+                    {
+                        //reset any group toggles
+                        g.MovingNegative = false;
+                        g.MovingPositive = false;
+
+                        g.MoveCenter();
+                    }
+                    SetTooltipText();
+
+                    if (GUILayout.Button(new GUIContent(TextureLoader.NextIcon, "Next Preset"), buttonStyle, GUILayout.Width(22), GUILayout.Height(BUTTON_HEIGHT)))
+                    {
+                        //reset any group toggles
+                        g.MovingNegative = false;
+                        g.MovingPositive = false;
+
+                        g.MoveNextPreset();
+                    }
+                    SetTooltipText();
+                }
+                else
+                {
+                    if (GUILayout.RepeatButton(new GUIContent(TextureLoader.LeftIcon, "Hold to Move -"), buttonStyle, GUILayout.Width(22), GUILayout.Height(BUTTON_HEIGHT)))
+                    {
+                        g.MovingNegative = false;
+                        g.MovingPositive = false;
+
+                        g.MoveLeft();
+
+                        g.ButtonDown = true;
+                    }
+
+                    SetTooltipText();
+
+                    if (GUILayout.RepeatButton(new GUIContent(TextureLoader.RevertIcon, "Hold to Center"), buttonStyle, GUILayout.Width(22), GUILayout.Height(BUTTON_HEIGHT)))
+                    {
+                        g.MovingNegative = false;
+                        g.MovingPositive = false;
+
+                        g.MoveCenter();
+
+                        g.ButtonDown = true;
+                    }
+                    SetTooltipText();
+
+                    if (GUILayout.RepeatButton(new GUIContent(TextureLoader.RightIcon, "Hold to Move +"), buttonStyle, GUILayout.Width(22), GUILayout.Height(BUTTON_HEIGHT)))
+                    {
+                        g.MovingNegative = false;
+                        g.MovingPositive = false;
+
+                        g.MoveRight();
+
+                        g.ButtonDown = true;
+                    }
+                    SetTooltipText();
+                }
+
+                toggleVal = GUILayout.Toggle(g.MovingPositive, new GUIContent(TextureLoader.RightToggleIcon, "Toggle Move +"), buttonStyle,
+                    GUILayout.Width(28), GUILayout.Height(BUTTON_HEIGHT));
+                SetTooltipText();
+
+                if (g.MovingPositive != toggleVal)
+                {
+                    if (!toggleVal) g.Stop();
+                    g.MovingPositive = toggleVal;
+                }
+
+                if (g.MovingPositive)
+                {
+                    g.MovingNegative = false;
+                    g.MoveRight();
+                }
+
+                GUILayout.EndHorizontal();
+
+                if (g.Expanded)
+                {
+                    GUILayout.BeginHorizontal(GUILayout.Height(5));
+                    GUILayout.EndHorizontal();
+
+                    foreach (var servo in g.Servos)
+                    {
+                        GUILayout.BeginHorizontal();
+
+                        string servoStatus = servo.Mechanism.IsMoving ? "<color=lime>■</color>" : "<color=yellow>■</color>";
+
+                        if (servo.Mechanism.IsLocked)
+                            servoStatus = "<color=red>■</color>";
+
+                        GUILayout.Label(servoStatus, dotStyle, GUILayout.Width(20), GUILayout.Height(BUTTON_HEIGHT));
+
+                        GUILayout.Label(servo.Name, nameStyle, GUILayout.ExpandWidth(true), GUILayout.Height(BUTTON_HEIGHT));
+
+                        nameStyle.fontStyle = FontStyle.Italic;
+                        nameStyle.alignment = TextAnchor.MiddleCenter;
+
+                        GUILayout.Label(string.Format("{0:#0.##}", servo.Mechanism.Position), servo.Mechanism.IsAxisInverted ? invPosStyle : nameStyle, GUILayout.Width(45), GUILayout.Height(BUTTON_HEIGHT));
+
+                        nameStyle.fontStyle = FontStyle.Normal;
+                        nameStyle.alignment = TextAnchor.MiddleLeft;
+
+                        bool servoLocked = servo.Mechanism.IsLocked;
+                        servoLocked = GUILayout.Toggle(servoLocked,
+                            servoLocked ? new GUIContent(TextureLoader.LockedIcon, "Unlock Servo") : new GUIContent(TextureLoader.UnlockedIcon, "Lock Servo"),
+                            buttonStyle, GUILayout.Width(28), GUILayout.Height(BUTTON_HEIGHT));
+                        servo.Mechanism.IsLocked = servoLocked;
+
+                        SetTooltipText();
+
+                        if (guiPresetMode)
+                        {
+                            if (GUILayout.Button(new GUIContent(TextureLoader.PrevIcon, "Previous Preset"), buttonStyle, GUILayout.Width(22), GUILayout.Height(BUTTON_HEIGHT)))
+                            {
+                                //reset any group toggles
+                                g.MovingNegative = false;
+                                g.MovingPositive = false;
+
+                                servo.Preset.MovePrev();
+                            }
+                            SetTooltipText();
+
+                            var rowHeight = GUILayout.Height(BUTTON_HEIGHT);
+                            DrawEditPresetButton(servo, buttonStyle, rowHeight);
+                            SetTooltipText();
+
+                            if (GUILayout.Button(new GUIContent(TextureLoader.NextIcon, "Next Preset"), buttonStyle, GUILayout.Width(22), GUILayout.Height(BUTTON_HEIGHT)))
+                            {
+                                //reset any group toggles
+                                g.MovingNegative = false;
+                                g.MovingPositive = false;
+
+                                servo.Preset.MoveNext();
+                            }
+                            SetTooltipText();
+                        }
+                        else
+                        {
+                            if (GUILayout.RepeatButton(new GUIContent(TextureLoader.LeftIcon, "Hold to Move -"), buttonStyle, GUILayout.Width(22), GUILayout.Height(BUTTON_HEIGHT)))
+                            {
+                                //reset any group toggles
+                                g.MovingNegative = false;
+                                g.MovingPositive = false;
+                                g.ButtonDown = true;
+
+                                servo.Mechanism.MoveLeft();
+                            }
+                            SetTooltipText();
+
+                            if (GUILayout.RepeatButton(new GUIContent(TextureLoader.RevertIcon, "Hold to Center"), buttonStyle, GUILayout.Width(22), GUILayout.Height(BUTTON_HEIGHT)))
+                            {
+                                //reset any group toggles
+                                g.MovingNegative = false;
+                                g.MovingPositive = false;
+                                g.ButtonDown = true;
+
+                                servo.Mechanism.MoveCenter();
+                            }
+                            SetTooltipText();
+
+                            if (GUILayout.RepeatButton(new GUIContent(TextureLoader.RightIcon, "Hold to Move +"), buttonStyle, GUILayout.Width(22), GUILayout.Height(BUTTON_HEIGHT)))
+                            {
+                                //reset any group toggles
+                                g.MovingNegative = false;
+                                g.MovingPositive = false;
+                                g.ButtonDown = true;
+
+                                servo.Mechanism.MoveRight();
+                            }
+                            SetTooltipText();
+                        }
+                        bool servoInverted = servo.Mechanism.IsAxisInverted;
+
+                        servoInverted = GUILayout.Toggle(servoInverted,
+                            servoInverted ? new GUIContent(TextureLoader.InvertedIcon, "Un-invert Axis") : new GUIContent(TextureLoader.NoninvertedIcon, "Invert Axis"),
+                            buttonStyle, GUILayout.Width(28), GUILayout.Height(BUTTON_HEIGHT));
+
+                        SetTooltipText();
+
+                        servo.Mechanism.IsAxisInverted = servoInverted;
+
+                        GUILayout.EndHorizontal();
+                    }
+
+                    GUILayout.BeginHorizontal(GUILayout.Height(5));
+                    GUILayout.EndHorizontal();
+                }
+
+                if (g.ButtonDown && Input.GetMouseButtonUp(0))
+                {
+                    //one of the repeat buttons in the group was pressed, but now mouse button is up
+                    g.ButtonDown = false;
+                    g.Stop();
+                }
+            }
+        }
+
         //servo control window used in flight
         private void ControlWindow(int windowID)
         {
-            GUILayoutOption width20 = GUILayout.Width(20);
-
             GUILayout.BeginVertical();
 
-            const int BUTTON_HEIGHT = 22;
-
             //use of for instead of foreach in intentional
+            //assuming that ServoGroups are sorted by vessel due to the way they are created
+
             for (int i = 0; i < ServoController.Instance.ServoGroups.Count; i++)
             {
                 ServoController.ControlGroup g = ServoController.Instance.ServoGroups[i];
 
-                if (g.Servos.Any())
+                if (HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != g.Vessel)
+                    continue;
+                /*if (i==0)
                 {
                     GUILayout.BeginHorizontal();
-
-                    if (g.Expanded)
-                    {
-                        g.Expanded = !GUILayout.Button(TextureLoader.CollapseIcon, buttonStyle, width20, GUILayout.Height(BUTTON_HEIGHT));
-                    }
-                    else
-                    {
-                        g.Expanded = GUILayout.Button(TextureLoader.ExpandIcon, buttonStyle, width20, GUILayout.Height(BUTTON_HEIGHT));
-                    }
-
                     nameStyle.fontStyle = FontStyle.Bold;
-
-                    GUILayout.Label(g.Name, nameStyle, GUILayout.ExpandWidth(true), GUILayout.Height(BUTTON_HEIGHT));
-
+                    GUILayout.Label(g.Vessel.GetName() + (g.Vessel == FlightGlobals.ActiveVessel ? " (Active)" : ""), nameStyle, GUILayout.ExpandWidth(true), GUILayout.Height(22));
                     nameStyle.fontStyle = FontStyle.Normal;
-
-                    g.Speed = GUILayout.TextField(g.Speed, GUILayout.Width(30), GUILayout.Height(BUTTON_HEIGHT));
-
-                    Rect last = GUILayoutUtility.GetLastRect();
-                    Vector2 pos = Event.current.mousePosition;
-                    if (last.Contains(pos) && Event.current.type == EventType.Repaint)
-                        tooltipText = "Speed Multiplier";
-
-                    bool toggleVal = GUILayout.Toggle(g.MovingNegative, new GUIContent(TextureLoader.LeftToggleIcon, "Toggle Move -"), buttonStyle,
-                        GUILayout.Width(28), GUILayout.Height(BUTTON_HEIGHT));
-
-                    SetTooltipText();
-
-                    if (g.MovingNegative != toggleVal)
-                    {
-                        if (!toggleVal) g.Stop();
-                        g.MovingNegative = toggleVal;
-                    }
-
-                    if (g.MovingNegative)
-                    {
-                        g.MovingPositive = false;
-                        g.MoveLeft();
-                    }
-
-                    if (guiPresetMode)
-                    {
-                        if (GUILayout.Button(new GUIContent(TextureLoader.PrevIcon, "Previous Preset"), buttonStyle, GUILayout.Width(22), GUILayout.Height(BUTTON_HEIGHT)))
-                        {
-                            //reset any group toggles
-                            g.MovingNegative = false;
-                            g.MovingPositive = false;
-
-                            g.MovePrevPreset();
-                        }
-                        SetTooltipText();
-
-                        if (GUILayout.Button(new GUIContent(TextureLoader.AutoRevertIcon, "Reset"), buttonStyle, GUILayout.Width(22), GUILayout.Height(BUTTON_HEIGHT)))
-                        {
-                            //reset any group toggles
-                            g.MovingNegative = false;
-                            g.MovingPositive = false;
-
-                            g.MoveCenter();
-                        }
-                        SetTooltipText();
-
-                        if (GUILayout.Button(new GUIContent(TextureLoader.NextIcon, "Next Preset"), buttonStyle, GUILayout.Width(22), GUILayout.Height(BUTTON_HEIGHT)))
-                        {
-                            //reset any group toggles
-                            g.MovingNegative = false;
-                            g.MovingPositive = false;
-
-                            g.MoveNextPreset();
-                        }
-                        SetTooltipText();
-                    }
-                    else
-                    {
-                        if (GUILayout.RepeatButton(new GUIContent(TextureLoader.LeftIcon, "Hold to Move -"), buttonStyle, GUILayout.Width(22), GUILayout.Height(BUTTON_HEIGHT)))
-                        {
-                            g.MovingNegative = false;
-                            g.MovingPositive = false;
-
-                            g.MoveLeft();
-
-                            g.ButtonDown = true;
-                        }
-
-                        SetTooltipText();
-
-                        if (GUILayout.RepeatButton(new GUIContent(TextureLoader.RevertIcon, "Hold to Center"), buttonStyle, GUILayout.Width(22), GUILayout.Height(BUTTON_HEIGHT)))
-                        {
-                            g.MovingNegative = false;
-                            g.MovingPositive = false;
-
-                            g.MoveCenter();
-
-                            g.ButtonDown = true;
-                        }
-                        SetTooltipText();
-
-                        if (GUILayout.RepeatButton(new GUIContent(TextureLoader.RightIcon, "Hold to Move +"), buttonStyle, GUILayout.Width(22), GUILayout.Height(BUTTON_HEIGHT)))
-                        {
-                            g.MovingNegative = false;
-                            g.MovingPositive = false;
-
-                            g.MoveRight();
-
-                            g.ButtonDown = true;
-                        }
-                        SetTooltipText();
-                    }
-
-                    toggleVal = GUILayout.Toggle(g.MovingPositive, new GUIContent(TextureLoader.RightToggleIcon, "Toggle Move +"), buttonStyle,
-                                                            GUILayout.Width(28), GUILayout.Height(BUTTON_HEIGHT));
-                    SetTooltipText();
-
-                    if (g.MovingPositive != toggleVal)
-                    {
-                        if (!toggleVal) g.Stop();
-                        g.MovingPositive = toggleVal;
-                    }
-
-                    if (g.MovingPositive)
-                    {
-                        g.MovingNegative = false;
-                        g.MoveRight();
-                    }
-
                     GUILayout.EndHorizontal();
+                    GUILayout.BeginHorizontal(GUILayout.Height(5));
+                    GUILayout.EndHorizontal();
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Space (10);
+                    GUILayout.BeginVertical();
 
-                    if (g.Expanded)
-                    {
-                        GUILayout.BeginHorizontal(GUILayout.Height(5));
-                        GUILayout.EndHorizontal();
-
-                        foreach (var servo in g.Servos)
-                        {
-                            GUILayout.BeginHorizontal();
-
-                            string servoStatus = servo.Mechanism.IsMoving ? "<color=lime>■</color>" : "<color=yellow>■</color>";
-
-                            if (servo.Mechanism.IsLocked)
-                                servoStatus = "<color=red>■</color>";
-
-                            GUILayout.Label(servoStatus, dotStyle, GUILayout.Width(20), GUILayout.Height(BUTTON_HEIGHT));
-
-                            GUILayout.Label(servo.Name, nameStyle, GUILayout.ExpandWidth(true), GUILayout.Height(BUTTON_HEIGHT));
-
-                            nameStyle.fontStyle = FontStyle.Italic;
-                            nameStyle.alignment = TextAnchor.MiddleCenter;
-
-                            GUILayout.Label(string.Format("{0:#0.##}", servo.Mechanism.Position), servo.Mechanism.IsAxisInverted ? invPosStyle : nameStyle, GUILayout.Width(45), GUILayout.Height(BUTTON_HEIGHT));
-
-                            nameStyle.fontStyle = FontStyle.Normal;
-                            nameStyle.alignment = TextAnchor.MiddleLeft;
-
-                            bool servoLocked = servo.Mechanism.IsLocked;
-                            servoLocked = GUILayout.Toggle(servoLocked,
-                                            servoLocked ? new GUIContent(TextureLoader.LockedIcon, "Unlock Servo") : new GUIContent(TextureLoader.UnlockedIcon, "Lock Servo"),
-                                            buttonStyle, GUILayout.Width(28), GUILayout.Height(BUTTON_HEIGHT));
-                            servo.Mechanism.IsLocked = servoLocked;
-
-                            SetTooltipText();
-
-                            if (guiPresetMode)
-                            {
-                                if (GUILayout.Button(new GUIContent(TextureLoader.PrevIcon, "Previous Preset"), buttonStyle, GUILayout.Width(22), GUILayout.Height(BUTTON_HEIGHT)))
-                                {
-                                    //reset any group toggles
-                                    g.MovingNegative = false;
-                                    g.MovingPositive = false;
-
-                                    servo.Preset.MovePrev();
-                                }
-                                SetTooltipText();
-
-                                var rowHeight = GUILayout.Height(BUTTON_HEIGHT);
-                                DrawEditPresetButton(servo, buttonStyle, rowHeight);
-                                SetTooltipText();
-
-                                if (GUILayout.Button(new GUIContent(TextureLoader.NextIcon, "Next Preset"), buttonStyle, GUILayout.Width(22), GUILayout.Height(BUTTON_HEIGHT)))
-                                {
-                                    //reset any group toggles
-                                    g.MovingNegative = false;
-                                    g.MovingPositive = false;
-
-                                    servo.Preset.MoveNext();
-                                }
-                                SetTooltipText();
-                            }
-                            else
-                            {
-                                if (GUILayout.RepeatButton(new GUIContent(TextureLoader.LeftIcon, "Hold to Move -"), buttonStyle, GUILayout.Width(22), GUILayout.Height(BUTTON_HEIGHT)))
-                                {
-                                    //reset any group toggles
-                                    g.MovingNegative = false;
-                                    g.MovingPositive = false;
-                                    g.ButtonDown = true;
-
-                                    servo.Mechanism.MoveLeft();
-                                }
-                                SetTooltipText();
-
-                                if (GUILayout.RepeatButton(new GUIContent(TextureLoader.RevertIcon, "Hold to Center"), buttonStyle, GUILayout.Width(22), GUILayout.Height(BUTTON_HEIGHT)))
-                                {
-                                    //reset any group toggles
-                                    g.MovingNegative = false;
-                                    g.MovingPositive = false;
-                                    g.ButtonDown = true;
-
-                                    servo.Mechanism.MoveCenter();
-                                }
-                                SetTooltipText();
-
-                                if (GUILayout.RepeatButton(new GUIContent(TextureLoader.RightIcon, "Hold to Move +"), buttonStyle, GUILayout.Width(22), GUILayout.Height(BUTTON_HEIGHT)))
-                                {
-                                    //reset any group toggles
-                                    g.MovingNegative = false;
-                                    g.MovingPositive = false;
-                                    g.ButtonDown = true;
-
-                                    servo.Mechanism.MoveRight();
-                                }
-                                SetTooltipText();
-                            }
-                            bool servoInverted = servo.Mechanism.IsAxisInverted;
-
-                            servoInverted = GUILayout.Toggle(servoInverted,
-                                servoInverted ? new GUIContent(TextureLoader.InvertedIcon, "Un-invert Axis") : new GUIContent(TextureLoader.NoninvertedIcon, "Invert Axis"),
-                                buttonStyle, GUILayout.Width(28), GUILayout.Height(BUTTON_HEIGHT));
-
-                            SetTooltipText();
-
-                            servo.Mechanism.IsAxisInverted = servoInverted;
-
-                            GUILayout.EndHorizontal();
-                        }
-
-                        GUILayout.BeginHorizontal(GUILayout.Height(5));
-                        GUILayout.EndHorizontal();
-                    }
-
-                    if (g.ButtonDown && Input.GetMouseButtonUp(0))
-                    {
-                        //one of the repeat buttons in the group was pressed, but now mouse button is up
-                        g.ButtonDown = false;
-                        g.Stop();
-                    }
                 }
+                else if (g.Vessel != ServoController.Instance.ServoGroups[i-1].Vessel)
+                {
+                    GUILayout.EndVertical();
+                    GUILayout.EndHorizontal();
+                    GUILayout.BeginHorizontal();
+                    nameStyle.fontStyle = FontStyle.Bold;
+                    GUILayout.Label(g.Vessel.GetName() + (g.Vessel == FlightGlobals.ActiveVessel ? " (Active)" : ""), nameStyle, GUILayout.ExpandWidth(true), GUILayout.Height(22));
+                    nameStyle.fontStyle = FontStyle.Normal;
+                    GUILayout.EndHorizontal();
+                    GUILayout.BeginHorizontal(GUILayout.Height(5));
+                    GUILayout.EndHorizontal();
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Space (10);
+                    GUILayout.BeginVertical();
+                }
+                */
+                DrawControlGroup (g);
+                /*
+                if (i==ServoController.Instance.ServoGroups.Count - 1)
+                {
+                    GUILayout.EndVertical();
+                    GUILayout.EndHorizontal();
+                }
+                */
             }
+
 
             GUILayout.BeginHorizontal(GUILayout.Height(32));
 
@@ -618,31 +678,7 @@ namespace InfernalRobotics.Gui
 
         private void DrawPresetSelector(IServo servo, GUILayoutOption rowHeight)
         {
-            //commented out parts are for Future experimental UI with mouse hover
-            /*var gc = new GUIContent (string.Format ("{0:#0.##}", servo.Mechanism.Position), "Add preset");
-
-            var customStyle = new GUIStyle (GUI.skin.button);
-            customStyle.normal.textColor = servo.Mechanism.IsAxisInverted ? Color.yellow : Color.white;
-            customStyle.alignment = TextAnchor.MiddleCenter;
-            customStyle.fontSize = 12;
-            customStyle.fontStyle = servo.Mechanism.IsAxisInverted ? FontStyle.Italic : FontStyle.Normal;
-            customStyle.padding = new RectOffset(2, 2, 2, 2);
-            customStyle.fixedWidth = 40;
-            customStyle.fixedHeight = 22;
-
-            var isPresetPosition = false;
-            var presetIndex = -1;
-
-            for (int i = 0; i < servo.Preset.Count; i++)
-            {
-                if (Math.Abs (servo.Preset [i] - servo.Mechanism.Position) < 0.00001)
-                {
-                    isPresetPosition = true;
-                    presetIndex = i;
-                    break;
-                }
-            }
-            */
+            
             int floor, ceiling;
 
             servo.Preset.GetNearestPresets(out floor, out ceiling);
@@ -654,34 +690,6 @@ namespace InfernalRobotics.Gui
             }
             SetTooltipText();
 
-            /*var rect = GUILayoutUtility.GetRect(gc, customStyle);
-            if (rect.Contains(Event.current.mousePosition))
-            {
-                if (isPresetPosition)
-                {
-                    gc.image = TextureLoader.TrashIcon;
-                    gc.text = "";
-                    gc.tooltip = "Delete Preset";
-                    tooltipText = gc.tooltip;
-                }
-                else
-                {
-                    gc.text = "Add";
-                }
-            }
-
-            if (GUI.Button(rect, gc, customStyle))
-            {
-                if (isPresetPosition)
-                {
-                    servo.Preset.RemoveAt (presetIndex);
-                }
-                else
-                {
-                    servo.Preset.Add (servo.Mechanism.Position);
-                }
-            }
-            */
             DrawServoPosition(servo, rowHeight);
 
             if (GUILayout.Button(new GUIContent(TextureLoader.NextIcon, "Next Preset" + ((ceiling >= 0) ? ": " + servo.Preset[ceiling] : "")),
@@ -690,6 +698,39 @@ namespace InfernalRobotics.Gui
                 servo.Preset.MoveNext();
             }
             SetTooltipText();
+        }
+        /// <summary>
+        /// Draws the text field and returns its value
+        /// </summary>
+        /// <returns>Entered value</returns>
+        /// <param name="controlName">Control name.</param>
+        /// <param name="value">Value.</param>
+        /// <param name="format">Format.</param>
+        /// <param name="style">Style.</param>
+        /// <param name="width">Width.</param>
+        /// <param name="height">Height.</param>
+        private string DrawTextField(string controlName, float value, string format, GUIStyle style, GUILayoutOption width, GUILayoutOption height)
+        {
+            string focusedControlName = GUI.GetNameOfFocusedControl ();
+
+            if (controlName == focusedControlName 
+                && lastFocusedTextFieldValue == "")
+            {
+                lastFocusedTextFieldValue = string.Format (format, value);
+            }
+
+            string tmp = (controlName == focusedControlName) 
+                ? lastFocusedTextFieldValue 
+                : string.Format (format, value);
+
+            GUI.SetNextControlName(controlName);
+            tmp = GUILayout.TextField(tmp, style, width, height);
+
+            if (controlName == focusedControlName 
+                && focusedControlName == lastFocusedControlName)
+                lastFocusedTextFieldValue = tmp;
+
+            return tmp;
         }
 
         private void DrawServoPosition(IServo servo, GUILayoutOption rowHeight)
@@ -704,16 +745,26 @@ namespace InfernalRobotics.Gui
                 fontStyle = servo.Mechanism.IsAxisInverted ? FontStyle.Italic : FontStyle.Normal
             };
             var posFormat = Math.Abs(servo.Mechanism.MaxPosition - servo.Mechanism.MinPosition) > 10 ? "{0:#0.0#}" : "{0:#0.0##}";
-            lastFocusedTextFieldValue = GUILayout.TextField(string.Format(posFormat, servo.Mechanism.Position), customStyle, GUILayout.Width(40), rowHeight);
+
+            string focusedControlName = GUI.GetNameOfFocusedControl ();
+            string thisControlName = "Position " + servo.UID;
+
+            string tmp = DrawTextField (thisControlName, servo.Mechanism.Position, posFormat, customStyle, GUILayout.Width (40), rowHeight);
+
+            var valueChanged = (thisControlName == focusedControlName && 
+                (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter));
 
             float tmpValue;
 
-            if (float.TryParse(lastFocusedTextFieldValue, out tmpValue))
+            if (float.TryParse (tmp, out tmpValue) && valueChanged) 
             {
+                //focus changers are handled elsewhere
                 tmpValue = Mathf.Clamp(tmpValue, servo.Mechanism.MinPositionLimit, servo.Mechanism.MaxPositionLimit);
 
-                if (Math.Abs(servo.Mechanism.Position - tmpValue) > 0.005 && GUI.changed)
+                if (Math.Abs(servo.Mechanism.Position - tmpValue) > 0.005)
                     servo.Mechanism.MoveTo(tmpValue);
+                
+                lastFocusedTextFieldValue = "";
             }
         }
 
@@ -769,6 +820,9 @@ namespace InfernalRobotics.Gui
             for (int i = 0; i < ServoController.Instance.ServoGroups.Count; i++)
             {
                 ServoController.ControlGroup grp = ServoController.Instance.ServoGroups[i];
+
+                if (HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != grp.Vessel)
+                    continue;
 
                 GUILayout.BeginHorizontal();
 
@@ -959,32 +1013,73 @@ namespace InfernalRobotics.Gui
                             GUILayout.BeginHorizontal();
 
                             GUILayout.Label("Range: ", GUILayout.Width(40), rowHeight);
-                            tmpMin = GUILayout.TextField(string.Format("{0:#0.0#}", servo.Mechanism.MinPositionLimit), GUILayout.Width(40), rowHeight);
+                            //GUI.SetNextControlName ("MinPositionLimit " + servo.UID);
+
+                            string focusedControlName = GUI.GetNameOfFocusedControl ();
+                            string thisControlName = "MinPositionLimit " + servo.UID;
+
+                            tmp = DrawTextField (thisControlName, servo.Mechanism.MinPositionLimit, "{0:#0.0#}", 
+                                                 GUI.skin.textField, GUILayout.Width (40), rowHeight);
+
+                            var valueChanged = (thisControlName == focusedControlName && 
+                                (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter));
+
                             float tmpValue;
 
-                            if (float.TryParse(tmpMin, out tmpValue))
+                            if (float.TryParse (tmp, out tmpValue) && valueChanged) 
                             {
+                                //focus changers are handled elsewhere
                                 servo.Mechanism.MinPositionLimit = tmpValue;
+                                lastFocusedTextFieldValue = "";
                             }
 
-                            tmpMax = GUILayout.TextField(string.Format("{0:#0.0#}", servo.Mechanism.MaxPositionLimit), GUILayout.Width(40), rowHeight);
-                            if (float.TryParse(tmpMax, out tmpValue))
+                            thisControlName = "MaxPositionLimit " + servo.UID;
+
+                            tmp = DrawTextField (thisControlName, servo.Mechanism.MaxPositionLimit, "{0:#0.0#}", 
+                                                 GUI.skin.textField, GUILayout.Width (40), rowHeight);
+
+                            valueChanged = (thisControlName == focusedControlName && 
+                                (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter));
+
+                            if (float.TryParse (tmp, out tmpValue) && valueChanged) 
                             {
+                                //focus changers are handled elsewhere
                                 servo.Mechanism.MaxPositionLimit = tmpValue;
+                                lastFocusedTextFieldValue = "";
                             }
 
                             GUILayout.Label("Spd: ", GUILayout.Width(30), rowHeight);
-                            tmpMin = GUILayout.TextField(string.Format("{0:#0.0##}", servo.Mechanism.SpeedLimit), GUILayout.Width(30), rowHeight);
-                            if (float.TryParse(tmpMin, out tmpValue))
+
+                            thisControlName = "Speed " + servo.UID;
+
+                            tmp = DrawTextField (thisControlName, servo.Mechanism.SpeedLimit, "{0:#0.0#}", 
+                                GUI.skin.textField, GUILayout.Width (30), rowHeight);
+
+                            valueChanged = (thisControlName == focusedControlName && 
+                                (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter));
+
+                            if (float.TryParse (tmp, out tmpValue) && valueChanged) 
                             {
+                                //focus changers are handled elsewhere
                                 servo.Mechanism.SpeedLimit = tmpValue;
+                                lastFocusedTextFieldValue = "";
                             }
 
                             GUILayout.Label("Acc: ", GUILayout.Width(30), rowHeight);
-                            tmpMin = GUILayout.TextField(string.Format("{0:#0.0##}", servo.Mechanism.AccelerationLimit), GUILayout.Width(30), rowHeight);
-                            if (float.TryParse(tmpMin, out tmpValue))
+
+                            thisControlName = "Acceleration " + servo.UID;
+
+                            tmp = DrawTextField (thisControlName, servo.Mechanism.AccelerationLimit, "{0:#0.0#}", 
+                                GUI.skin.textField, GUILayout.Width (30), rowHeight);
+
+                            valueChanged = (thisControlName == focusedControlName && 
+                                (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter));
+
+                            if (float.TryParse (tmp, out tmpValue) && valueChanged) 
                             {
+                                //focus changers are handled elsewhere
                                 servo.Mechanism.AccelerationLimit = tmpValue;
+                                lastFocusedTextFieldValue = "";
                             }
 
                             bool servoInverted = servo.Mechanism.IsAxisInverted;
@@ -995,6 +1090,11 @@ namespace InfernalRobotics.Gui
 
                             SetTooltipText();
                             servo.Mechanism.IsAxisInverted = servoInverted;
+
+                            if (GUILayout.Button(new GUIContent(TextureLoader.CloneIcon, "Apply Symmetry"), buttonStyle, GUILayout.Width(28), rowHeight))
+                            {
+                                servo.Mechanism.ApplyLimitsToSymmetry ();
+                            }
                         }
 
                         if (isEditor)
@@ -1097,6 +1197,93 @@ namespace InfernalRobotics.Gui
             editorScroll.y = newY;
         }
 
+        private void ProcessFocusChange()
+        {
+            var temp = lastFocusedControlName.Split (' ');
+            Logger.Log ("[GUI] Focus change, lastName = " + lastFocusedControlName 
+                + ", lastValue = " + lastFocusedTextFieldValue 
+                + ", temp.Length = " + temp.Length, Logger.Level.Debug);
+
+            var servoFields = new string[6] {"Preset", "Position", "MinPositionLimit", "MaxPositionLimit", "Speed", "Acceleration"};
+
+            var pos = Array.IndexOf (servoFields, temp [0]);
+
+            if (pos == 0  && temp.Length == 2 && associatedServo != null)
+            {
+                int tmpVal = -1;
+                if(int.TryParse(temp[1], out tmpVal))
+                {
+                    if (tmpVal >= 0 && tmpVal < associatedServo.Preset.Count)
+                    {
+                        float tmpValue;
+
+                        if (float.TryParse (lastFocusedTextFieldValue, out tmpValue)) 
+                        {
+                            if (tmpValue != associatedServo.Preset [tmpVal] && associatedServo.Preset [tmpVal] == associatedServo.Mechanism.DefaultPosition) 
+                            {
+                                associatedServo.Mechanism.DefaultPosition = tmpValue;
+                            }
+                            associatedServo.Preset [tmpVal] = tmpValue;
+                        }
+                    }
+                }
+            }
+            else if (temp.Length == 2 && pos > 0 && pos < 6)
+            {
+                uint servoUID = 0;
+                if(uint.TryParse(temp[1], out servoUID))
+                {
+                    //find servo with UID and update its position
+                    var allServos = new List<IServo>();
+                    foreach (var g in ServoController.Instance.ServoGroups)
+                    {
+                        allServos.AddRange (g.Servos);
+                    }
+                    var s = allServos.Find (p => p.UID == servoUID);
+
+                    if (s != null)
+                    {
+                        float tmpValue;
+
+                        if (float.TryParse (lastFocusedTextFieldValue, out tmpValue)) 
+                        {
+                            if (pos == 1)
+                            {
+                                tmpValue = Mathf.Clamp(tmpValue, s.Mechanism.MinPositionLimit, s.Mechanism.MaxPositionLimit);
+
+                                if (Math.Abs(s.Mechanism.Position - tmpValue) > 0.005)
+                                    s.Mechanism.MoveTo(tmpValue);
+                            }
+                            else if (pos == 2)
+                            {
+                                s.Mechanism.MinPositionLimit = tmpValue;
+                            }
+                            else if (pos == 3)
+                            {
+                                s.Mechanism.MaxPositionLimit = tmpValue;
+                            }
+                            else if (pos == 4)
+                            {
+                                s.Mechanism.SpeedLimit = tmpValue;
+                            }
+                            else if (pos == 5)
+                            {
+                                s.Mechanism.AccelerationLimit = tmpValue;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (associatedServo != null)
+            {
+                associatedServo.Preset.Sort();
+            }
+
+            lastFocusedControlName = GUI.GetNameOfFocusedControl();
+            lastFocusedTextFieldValue = "";
+        }
+
         private void PresetsEditWindow(int windowID)
         {
             GUILayoutOption rowHeight = GUILayout.Height(22);
@@ -1107,6 +1294,7 @@ namespace InfernalRobotics.Gui
             if (GUILayout.Button("Add", buttonStyle, GUILayout.Width(30), rowHeight))
             {
                 associatedServo.Preset.Add();
+                associatedServo.Preset.Sort();
             }
             GUILayout.EndHorizontal();
 
@@ -1115,17 +1303,44 @@ namespace InfernalRobotics.Gui
             for (int i = 0; i < associatedServo.Preset.Count; i++)
             {
                 GUILayout.BeginHorizontal();
-                GUI.SetNextControlName("Preset " + i);
-                string tmp = GUILayout.TextField(string.Format("{0:#0.0#}", associatedServo.Preset[i]), GUILayout.ExpandWidth(true), rowHeight);
+
+                string focusedControlName = GUI.GetNameOfFocusedControl ();
+                string thisControlName = "Preset " + i;
+
+                if (thisControlName == focusedControlName 
+                    && lastFocusedTextFieldValue == "")
+                {
+                    lastFocusedTextFieldValue = string.Format ("{0:#0.0#}", associatedServo.Preset [i]);
+                }
+
+                string tmp = (thisControlName == focusedControlName) 
+                                ? lastFocusedTextFieldValue 
+                                : string.Format("{0:#0.0#}", associatedServo.Preset[i]);
+                
+                GUI.SetNextControlName(thisControlName);
+                tmp = GUILayout.TextField(tmp, GUILayout.ExpandWidth(true), rowHeight);
+
+                if (thisControlName == focusedControlName 
+                    && focusedControlName == lastFocusedControlName)
+                    lastFocusedTextFieldValue = tmp;
+                
+                var valueChanged = (thisControlName == focusedControlName && 
+                                   (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter));
 
                 float tmpValue;
-                if (float.TryParse(tmp, out tmpValue))
+
+                if (float.TryParse (tmp, out tmpValue) && valueChanged) 
                 {
-                    if (tmpValue != associatedServo.Preset[i] && associatedServo.Preset[i] == associatedServo.Mechanism.DefaultPosition)
+                    //focus changes are handled elsewhere
+                    if (tmpValue != associatedServo.Preset [i] && associatedServo.Preset [i] == associatedServo.Mechanism.DefaultPosition) 
                     {
                         associatedServo.Mechanism.DefaultPosition = tmpValue;
                     }
-                    associatedServo.Preset[i] = tmpValue;
+                    associatedServo.Preset [i] = tmpValue;
+                    associatedServo.Preset.Sort ();
+                    //unfocus control as the list is sorted
+                    GUIUtility.keyboardControl = 0;
+                    lastFocusedTextFieldValue = "";
                 }
 
                 bool isDefault = (associatedServo.Preset[i] == associatedServo.Mechanism.DefaultPosition);
@@ -1152,12 +1367,6 @@ namespace InfernalRobotics.Gui
                 GUILayout.EndHorizontal();
             }
 
-            if (lastFocusedControlName != GUI.GetNameOfFocusedControl())
-            {
-                associatedServo.Preset.Sort();
-                lastFocusedControlName = GUI.GetNameOfFocusedControl();
-            }
-
             GUILayout.BeginHorizontal();
 
             if (GUILayout.Button("Apply Symmetry", buttonStyle))
@@ -1165,7 +1374,7 @@ namespace InfernalRobotics.Gui
                 associatedServo.Preset.Save(true);
             }
 
-            if (GUILayout.Button("Save&Exit", buttonStyle, GUILayout.Width(70)))
+            if (GUILayout.Button("Close", buttonStyle, GUILayout.Width(70)))
             {
                 associatedServo.Preset.Save();
                 guiPresetsEnabled = false;
@@ -1185,21 +1394,24 @@ namespace InfernalRobotics.Gui
 
         private void OnGUI()
         {
-            // This particular test isn't needed due to the GUI being enabled
-            // and disabled as appropriate, but it saves potential NREs.
-
-            if (ServoController.Instance == null)
-                return;
-
-            if (ServoController.Instance.ServoGroups == null)
+            if (!ServoController.APIReady)
             {
                 if (ToolbarManager.ToolbarAvailable)
                     irMinimizeButton.Visible = false;
+                if (button != null)
+                {
+                    button.VisibleInScenes = ApplicationLauncher.AppScenes.SPH | ApplicationLauncher.AppScenes.VAB;
+                }
                 return;
             }
-
+            //at this point we have ServoController active with at least one group in it.
             if (ToolbarManager.ToolbarAvailable)
                 irMinimizeButton.Visible = true;
+
+            if (button != null)
+            {
+                button.VisibleInScenes = ApplicationLauncher.AppScenes.FLIGHT | ApplicationLauncher.AppScenes.SPH | ApplicationLauncher.AppScenes.VAB;
+            }
 
             //what is that for?
             //if (InputLockManager.IsLocked(ControlTypes.LINEAR)) return;
@@ -1257,6 +1469,20 @@ namespace InfernalRobotics.Gui
             editorWindowWidth = (int)Math.Round(maxServoNameUISize + 340);
             if (editorWindowWidth > Screen.width * 0.7)
                 editorWindowWidth = (int)Math.Round(Screen.width * 0.7f);
+
+            if (GUIEnabled && !guiHidden) 
+            {
+                if (lastFocusedControlName != GUI.GetNameOfFocusedControl ()) 
+                {
+                    ProcessFocusChange ();
+                }
+
+                //this code defocuses the TexFields if you click mouse elsewhere
+                if (GUIUtility.hotControl > 0 && GUIUtility.hotControl != GUIUtility.keyboardControl) 
+                {
+                    GUIUtility.keyboardControl = 0;
+                }
+            }
 
             if (scene == GameScenes.FLIGHT)
             {
