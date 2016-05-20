@@ -41,7 +41,7 @@ namespace InfernalRobotics.Gui
         private static CanvasGroupFader _settingsWindowFader;
         private static CanvasGroupFader _presetsWindowFader;
 
-        internal static Dictionary<ServoController.ControlGroup,GameObject> _servoGroupUIControls;
+        internal static Dictionary<ServoGroup, GameObject> _servoGroupUIControls;
         internal static Dictionary<IServo, GameObject> _servoUIControls;
 
         public static float _UIAlphaValue = 0.8f;
@@ -96,7 +96,7 @@ namespace InfernalRobotics.Gui
             {
                 _instance = this;
 
-                _servoGroupUIControls = new Dictionary<ServoController.ControlGroup, GameObject>();
+                _servoGroupUIControls = new Dictionary<ServoGroup, GameObject>();
                 _servoUIControls = new Dictionary<IServo, GameObject>();
             }
             else
@@ -417,7 +417,7 @@ namespace InfernalRobotics.Gui
             stopAllTooltip.tooltipText = "Panic! Stop all servos!";
         }
 
-        private void InitFlightGroupControls(GameObject newServoGroupLine, ServoController.ControlGroup g)
+        private void InitFlightGroupControls(GameObject newServoGroupLine, ServoGroup g)
         {
             var hlg = newServoGroupLine.GetChild("ServoGroupControlsHLG");
             var servosVLG = newServoGroupLine.GetChild("ServoGroupServosVLG");
@@ -442,8 +442,15 @@ namespace InfernalRobotics.Gui
             groupExpandTooltip.tooltipText = "Show/hide group's servos";
             
             var groupSpeed = hlg.GetChild("ServoGroupSpeedMultiplier").GetComponent<InputField>();
-            groupSpeed.text = g.Speed;
-            groupSpeed.onEndEdit.AddListener(v => { g.Speed = v; });
+            groupSpeed.text = string.Format("{0:#0.0}", g.Speed);;
+            groupSpeed.onEndEdit.AddListener(v => 
+                {
+                    float tmpValue = 0f;
+                    if (float.TryParse(v, out tmpValue))
+                    {
+                        g.Speed = tmpValue;
+                    }
+                });
 
             var groupSpeedTooltip = groupSpeed.gameObject.AddComponent<BasicTooltip>();
             groupSpeedTooltip.tooltipText = "Speed Multiplier";
@@ -926,7 +933,7 @@ namespace InfernalRobotics.Gui
             var addGroupButton = editorFooterButtons.GetChild("AddGroupButton").GetComponent<Button>();
             addGroupButton.onClick.AddListener(() =>
             {
-                var g = new ServoController.ControlGroup { Name = newGroupNameInputField.text };
+                var g = new ServoGroup { Name = newGroupNameInputField.text };
                 ServoController.Instance.ServoGroups.Add(g);
 
                 GameObject servoGroupsArea = _editorWindow.GetChild("WindowContent").GetChild("Scroll View").GetChild("Viewport").GetChild("Content").GetChild("ServoGroupsVLG");
@@ -978,7 +985,7 @@ namespace InfernalRobotics.Gui
 
         }
 
-        private void InitEditorGroupControls(GameObject newServoGroupLine, ServoController.ControlGroup g)
+        private void InitEditorGroupControls(GameObject newServoGroupLine, ServoGroup g)
         {
             var hlg = newServoGroupLine.GetChild("ServoGroupControlsHLG");
             var servosVLG = newServoGroupLine.GetChild("ServoGroupServosVLG");
@@ -1075,7 +1082,7 @@ namespace InfernalRobotics.Gui
                     while (g.Servos.Any())
                     {
                         var s = g.Servos.First();
-                        ServoController.MoveServo(g, ServoController.Instance.ServoGroups[0], s);
+                        ServoController.ChangeServoGroup(g, ServoController.Instance.ServoGroups[0], s);
                     }
 
                     ServoController.Instance.ServoGroups.Remove(g);
@@ -1377,7 +1384,7 @@ namespace InfernalRobotics.Gui
             }
 
             //later consider puting animation here, for now just change parents
-            ServoController.MoveServo(ServoController.Instance.ServoGroups[currentGroupIndex], ServoController.Instance.ServoGroups[currentGroupIndex - 1], s);
+            ServoController.ChangeServoGroup(ServoController.Instance.ServoGroups[currentGroupIndex], ServoController.Instance.ServoGroups[currentGroupIndex - 1], s);
             servoUIControls.transform.SetParent(prevGroupUIControls.GetChild("ServoGroupServosVLG").transform, false);
         }
 
@@ -1401,7 +1408,7 @@ namespace InfernalRobotics.Gui
             }
 
             //later consider puting animation here, for now just change parents
-            ServoController.MoveServo(ServoController.Instance.ServoGroups[currentGroupIndex], ServoController.Instance.ServoGroups[currentGroupIndex + 1], s);
+            ServoController.ChangeServoGroup(ServoController.Instance.ServoGroups[currentGroupIndex], ServoController.Instance.ServoGroups[currentGroupIndex + 1], s);
             servoUIControls.transform.SetParent(nextGroupUIControls.GetChild("ServoGroupServosVLG").transform, false);
         }
         public void ShowServoAdvancedMode(IServo servo, bool value)
@@ -1463,7 +1470,7 @@ namespace InfernalRobotics.Gui
 
                 for (int i = 0; i < ServoController.Instance.ServoGroups.Count; i++)
                 {
-                    ServoController.ControlGroup g = ServoController.Instance.ServoGroups[i];
+                    ServoGroup g = ServoController.Instance.ServoGroups[i];
 
                     if (HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != g.Vessel)
                         continue;
@@ -1490,7 +1497,7 @@ namespace InfernalRobotics.Gui
 
                 for (int i = 0; i < ServoController.Instance.ServoGroups.Count; i++)
                 {
-                    ServoController.ControlGroup g = ServoController.Instance.ServoGroups[i];
+                    ServoGroup g = ServoController.Instance.ServoGroups[i];
 
                     var newServoGroupLine = GameObject.Instantiate(UIAssetsLoader.editorWindowGroupLinePrefab);
                     newServoGroupLine.transform.SetParent(servoGroupsArea.transform, false);

@@ -115,6 +115,9 @@ namespace InfernalRobotics.Module
 
         //Group related KSPFields
         [KSPField(isPersistant = true)] public string groupName = "";
+
+        public List<ProtoGroup> servoGroups;
+        [KSPField(isPersistant = true)] public ConfigNode servoGroupsNode;
         //end Group relsted KSPFields
 
         //Begin Input related KSPFields
@@ -438,6 +441,16 @@ namespace InfernalRobotics.Module
 
             presetPositionsSerialized = SerializePresets();
 
+            servoGroupsNode = new ConfigNode("servoGroups");
+            if(servoGroups != null)
+            {
+                foreach(var pg in servoGroups)
+                {
+                    servoGroupsNode.AddNode(pg.Serialize());
+                }
+            }
+            Logger.Log("Saving proto groups: " + servoGroupsNode.ToString(), Logger.Level.Debug);
+
             Logger.Log("[OnSave] End", Logger.Level.Debug);
         }
 
@@ -497,6 +510,40 @@ namespace InfernalRobotics.Module
             translationDelta = translation;
 
             InitModule();
+
+            servoGroups = new List<ProtoGroup>();
+            if(servoGroupsNode != null && servoGroupsNode.HasNode("servoGroups"))
+            {
+                var pgs = servoGroupsNode.GetNode("servoGroups").GetNodes();
+                foreach (var n in pgs)
+                {
+                    if(n.HasValue("groupID"))
+                    {
+                        var newPG = ProtoGroup.LoadFromNode(n);
+                        servoGroups.Add(newPG);
+                    }
+                }
+            }
+            else
+            {
+                //there is no node to load, need to have a legacy groupName converted into ProtoGroup, but without duplicating groupID
+                if(ServoController.Instance != null && ServoController.Instance.ServoGroups != null)
+                {
+                    var existingGroup = ServoController.Instance.ServoGroups.Find(g => g.name == groupName);
+                    if(existingGroup != null)
+                    {
+                        servoGroups.Add((ProtoGroup)existingGroup);
+                    }
+                }
+                else
+                {
+                    var newPG = new ProtoGroup();
+                    newPG.name = this.groupName;
+                    newPG.forwardKey = this.forwardKey;
+                    newPG.reverseKey = this.reverseKey;
+                    newPG.speedMultipler = this.customSpeed;
+                }
+            }
 
             Logger.Log("[OnLoad] End", Logger.Level.Debug);
         }

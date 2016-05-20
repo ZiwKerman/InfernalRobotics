@@ -42,7 +42,7 @@ namespace InfernalRobotics.Gui
                     }
 
                     var newGroupIndex = dragHandler.dropZone.parent.GetSiblingIndex();
-                    ServoController.MoveServo(ServoController.Instance.ServoGroups[oldGroupIndex], ServoController.Instance.ServoGroups[newGroupIndex], s);
+                    ServoController.ChangeServoGroup(ServoController.Instance.ServoGroups[oldGroupIndex], ServoController.Instance.ServoGroups[newGroupIndex], s);
                     break;
                 }
             }

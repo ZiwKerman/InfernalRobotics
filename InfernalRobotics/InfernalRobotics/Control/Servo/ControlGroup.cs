@@ -1,4 +1,6 @@
 ﻿using InfernalRobotics.Module;
+using InfernalRobotics.Command;
+using System.Collections.Generic;
 
 namespace InfernalRobotics.Control.Servo
 {
@@ -11,16 +13,38 @@ namespace InfernalRobotics.Control.Servo
             this.rawServo = rawServo;
         }
 
-        public string Name
+        public void AddGroup(ProtoGroup pg)
         {
-            get { return rawServo.groupName; }
-            set { rawServo.groupName = value; }
+            if(rawServo.servoGroups.Find(g => g._guid == pg._guid) != null)
+            {
+                //maybe we should update servo's stored PG with passed PG
+                return;
+            }
+            else
+            {
+                rawServo.servoGroups.Add(pg);
+            }
         }
 
-        public float ElectricChargeRequired
+        public void RemoveGroup(ProtoGroup pg)
         {
-            get { return rawServo.GroupElectricChargeRequired; }
-            set { rawServo.GroupElectricChargeRequired = value; }
+            var toRemove = rawServo.servoGroups.Find(g => g._guid == pg._guid);
+            if(toRemove != null)
+            {
+                rawServo.servoGroups.Remove(toRemove);
+            }
+            else
+            {
+                //not found
+            }
+        }
+
+        public List<ProtoGroup> AllGroups
+        {
+            get
+            {
+                return rawServo.servoGroups;
+            }
         }
     }
 }

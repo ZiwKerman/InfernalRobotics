@@ -1,14 +1,15 @@
-﻿namespace InfernalRobotics.Control
+﻿using System.Collections.Generic;
+using InfernalRobotics.Command;
+
+namespace InfernalRobotics.Control
 {
     public interface IControlGroup    
     {
-        /// <summary>
-        /// Name of the Group
-        /// </summary>
-        string Name { get; set; }
-        /// <summary>
-        /// Amount of EC consumed by the Group
-        /// </summary>
-        float ElectricChargeRequired { get; set; }
+        List<ProtoGroup> AllGroups { get; }
+
+        void AddGroup(ProtoGroup pg);
+
+        void RemoveGroup(ProtoGroup pg);
+
     }
 }

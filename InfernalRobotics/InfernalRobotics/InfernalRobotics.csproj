@@ -110,6 +110,8 @@
     <Compile Include="Gui\PanelDragger.cs" />
     <Compile Include="Gui\WindowManager.cs" />
     <Compile Include="Utitlity\TextureLoader.cs" />
+    <Compile Include="Command\ProtoGroup.cs" />
+    <Compile Include="Command\ServoGroup.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it.
