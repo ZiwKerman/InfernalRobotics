@@ -43,10 +43,10 @@ namespace InfernalRobotics.Command
 
             retVal.AddValue("groupID", groupID);
             retVal.AddValue("name", name);
-            retVal.AddValue("speedMultiplier", speedMultipler);
+            retVal.AddValue("speedMultiplier", speedMultipler.ToString());
             retVal.AddValue("forwardKey", forwardKey);
             retVal.AddValue("reverseKey", reverseKey);
-            retVal.AddValue("Expanded", Expanded);
+            retVal.AddValue("Expanded", Expanded.ToString());
 
             return retVal;
         }

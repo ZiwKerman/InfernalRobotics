@@ -14,8 +14,9 @@ namespace InfernalRobotics.Command
         private bool stale;
         private float totalElectricChargeRequirement;
 
-        public ServoGroup(IServo s)
+        public ServoGroup(IServo s) : base()
         {
+            servos = new List<IServo>();
             servos.Add(s);
             vessel = s.RawServo.vessel;
         }
@@ -23,6 +24,19 @@ namespace InfernalRobotics.Command
         public ServoGroup() : base()
         {
             
+        }
+
+        public ServoGroup (ProtoGroup pg)
+        {
+            this._guid = pg._guid;
+            this.name = pg.name;
+            this.forwardKey = pg.forwardKey;
+            this.reverseKey = pg.reverseKey;
+            this.Expanded = pg.Expanded;
+            this.speedMultipler = pg.speedMultipler;
+
+            this.servos = new List<IServo>();
+
         }
 
         public IList<IServo> Servos

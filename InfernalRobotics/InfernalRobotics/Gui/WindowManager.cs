@@ -1602,11 +1602,11 @@ namespace InfernalRobotics.Gui
 
             if(HighLogic.LoadedSceneIsEditor || guiFlightEditorWindowOpen)
             {
-                _editorWindowFader.FadeTo(_UIAlphaValue, 0.1f, () => { GUIEnabled = true; appLauncherButton.SetTrue(false); });
+                _editorWindowFader?.FadeTo(_UIAlphaValue, 0.1f, () => { GUIEnabled = true; appLauncherButton.SetTrue(false); });
             }
             else
             {
-                _controlWindowFader.FadeTo(_UIAlphaValue, 0.1f, () => { GUIEnabled = true; appLauncherButton.SetTrue(false); });
+                _controlWindowFader?.FadeTo(_UIAlphaValue, 0.1f, () => { GUIEnabled = true; appLauncherButton.SetTrue(false); });
             }
 
         }

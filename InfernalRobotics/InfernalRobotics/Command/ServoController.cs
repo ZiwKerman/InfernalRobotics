@@ -74,8 +74,11 @@ namespace InfernalRobotics.Command
 
         private void OnPartAttach(GameEvents.HostTargetAction<Part, Part> hostTarget)
         {
-            
-            var servos = hostTarget.host.GetChildServos();
+            Part part = hostTarget.host;
+            var servos = part.GetChildServos();
+
+            if (servos == null)
+                return;
 
             if (ServoGroups == null)
                 ServoGroups = new List<ServoGroup>();
@@ -100,7 +103,8 @@ namespace InfernalRobotics.Command
                         }
                         else
                         {
-                            newSG = (ServoGroup) g; //cast ProtoGroup into ServoGroup
+                            newSG = new ServoGroup(g);
+                            newSG.Servos.Add(s);
                             ServoGroups.Add(newSG);
                         }
 
@@ -184,7 +188,8 @@ namespace InfernalRobotics.Command
                             }
                             else
                             {
-                                newSG = (ServoGroup) g; //cast ProtoGroup into ServoGroup
+                                newSG = new ServoGroup(g); //cast ProtoGroup into ServoGroup
+                                newSG.Servos.Add(s);
                                 ServoGroups.Add(newSG);
                             }
 
@@ -314,6 +319,8 @@ namespace InfernalRobotics.Command
             {
                 ControllerInstance = null;
             }
+
+            allServos = new List<IServo>();
 
             Logger.Log("[ServoController] awake finished successfully, AddonName = " + this.AddonName, Logger.Level.Debug);
         }
