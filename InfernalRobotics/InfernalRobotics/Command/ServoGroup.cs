@@ -50,6 +50,8 @@ namespace InfernalRobotics.Command
             set
             {
                 name = value;
+                //we also need to update protogroups on all siblings
+                UpdateProtoSiblings();
             }
         }
 
@@ -59,6 +61,8 @@ namespace InfernalRobotics.Command
             set
             {
                 forwardKey = value;
+                //we also need to update protogroups on all siblings
+                UpdateProtoSiblings();
             }
         }
 
@@ -68,6 +72,8 @@ namespace InfernalRobotics.Command
             set
             {
                 reverseKey = value;
+                //we also need to update protogroups on all siblings
+                UpdateProtoSiblings();
             }
         }
 
@@ -77,6 +83,29 @@ namespace InfernalRobotics.Command
             set
             {
                 speedMultipler = value;
+                //we also need to update protogroups on all siblings
+                UpdateProtoSiblings();
+            }
+        }
+
+        public void UpdateProtoSiblings()
+        {
+            //we also need to update protogroups on all siblings
+            if(servos != null)
+            {
+                foreach(var s in servos)
+                {
+                    var pg = s.Group.AllGroups.Find(g => g._guid == this._guid);
+                    if (pg != null)
+                    {
+                        pg.name = this.name;
+                        pg.forwardKey = this.forwardKey;
+                        pg.reverseKey = this.reverseKey;
+                        pg.speedMultipler = this.speedMultipler;
+                        pg.Expanded = this.Expanded;
+                    }
+                        
+                }
             }
         }
 

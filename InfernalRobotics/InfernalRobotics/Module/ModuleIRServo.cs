@@ -117,7 +117,6 @@ namespace InfernalRobotics.Module
         [KSPField(isPersistant = true)] public string groupName = "";
 
         public List<ProtoGroup> servoGroups;
-        [KSPField(isPersistant = true)] public string servoGroupsNodeString;
         //end Group relsted KSPFields
 
         //Begin Input related KSPFields
@@ -451,7 +450,11 @@ namespace InfernalRobotics.Module
             }
             Logger.Log("Saving proto groups: " + servoGroupsNode.ToString(), Logger.Level.Debug);
 
-            servoGroupsNodeString = servoGroupsNode.ToString();
+            if(node.HasNode("servoGroups"))
+            {
+                node.RemoveNode("servoGroups");
+            }
+            node.AddNode(servoGroupsNode);
 
             Logger.Log("[OnSave] End", Logger.Level.Debug);
         }
@@ -476,18 +479,30 @@ namespace InfernalRobotics.Module
             return PresetPositions.Aggregate(string.Empty, (current, s) => current + (s + "|"));
         }
 
-        protected void LoadProtoGroups()
+        protected void LoadProtoGroups(ConfigNode node = null)
         {
             servoGroups = new List<ProtoGroup>();
 
-            ConfigNode servoGroupsNode = string.IsNullOrEmpty(servoGroupsNodeString) ? null : ConfigNode.Parse(servoGroupsNodeString);
+            ConfigNode servoGroupsNode = null;
+            if(node!= null && !node.TryGetNode("servoGroups", ref servoGroupsNode))
+            {
+                Logger.Log("[LoadProtoGroups] Failed getting servoGroups from ConfigNode = " + node.ToString(), Logger.Level.Debug);
+                return;
+            }
 
-            if(servoGroupsNode != null && servoGroupsNode.HasNode("servoGroups"))
+            if(servoGroupsNode != null )
             {
                 Logger.Log("[LoadProtoGroups] Loading ProtoGroups from ConfigNode = " + servoGroupsNode.ToString(), Logger.Level.Debug);
-                var pgs = servoGroupsNode.GetNode("servoGroups").GetNodes();
+
+                if(!servoGroupsNode.HasNode("ProtoGroup"))
+                {
+                    Logger.Log("[LoadProtoGroups] Invalid ConfigNode = " + servoGroupsNode.ToString(), Logger.Level.Debug);
+                    return;
+                }
+                var pgs = servoGroupsNode.GetNodes();
                 foreach (var n in pgs)
                 {
+                    Logger.Log("[LoadProtoGroups] Parsing ProtoGroup from ConfigNode = " + n.ToString(), Logger.Level.Debug);
                     if(n.HasValue("groupID"))
                     {
                         var newPG = ProtoGroup.LoadFromNode(n);
@@ -537,8 +552,6 @@ namespace InfernalRobotics.Module
 
         protected virtual void InitModule()
         {
-            LoadProtoGroups();
-
             FindTransforms();
 
             if (ModelTransform == null)
@@ -564,14 +577,16 @@ namespace InfernalRobotics.Module
             UpdateMinMaxTweaks();
         }
 
-        public override void OnLoad(ConfigNode config)
+        public override void OnLoad(ConfigNode node)
         {
             Logger.Log("[OnLoad] Start", Logger.Level.Debug);
-            base.OnLoad(config);
+            base.OnLoad(node);
 
             //save persistent rotation/translation data, because the joint will be initialized at current position.
             rotationDelta = rotation;
             translationDelta = translation;
+
+            LoadProtoGroups(node);
 
             InitModule();
 
@@ -744,8 +759,12 @@ namespace InfernalRobotics.Module
 
             Translator.Init(isMotionLock, new Servo(this), Interpolator);
 
-            //now parse groups
-            LoadProtoGroups();
+            if(servoGroups == null || servoGroups.Count == 0)
+            {
+                Logger.Log("[OnStart] ProtoGroups not ready", Logger.Level.Debug);
+                //here we need to do default initialisation
+                LoadProtoGroups();
+            }
 
             if (vessel == null) //or we can check for state==StartState.Editor
             {

@@ -42,7 +42,7 @@ namespace InfernalRobotics.Gui
         private static CanvasGroupFader _presetsWindowFader;
 
         internal static Dictionary<ServoGroup, GameObject> _servoGroupUIControls;
-        internal static Dictionary<IServo, GameObject> _servoUIControls;
+        internal static Dictionary<GameObject, IServo> _servoUIControls;
 
         public static float _UIAlphaValue = 0.8f;
         public static float _UIScaleValue = 1.0f;
@@ -97,7 +97,7 @@ namespace InfernalRobotics.Gui
                 _instance = this;
 
                 _servoGroupUIControls = new Dictionary<ServoGroup, GameObject>();
-                _servoUIControls = new Dictionary<IServo, GameObject>();
+                _servoUIControls = new Dictionary<GameObject, IServo>();
             }
             else
             {
@@ -559,7 +559,7 @@ namespace InfernalRobotics.Gui
 
                 InitFlightServoControls(newServoLine, s);
 
-                _servoUIControls.Add(s, newServoLine);
+                _servoUIControls.Add(newServoLine, s);
             }
         }
 
@@ -682,7 +682,7 @@ namespace InfernalRobotics.Gui
             }
             foreach (var servoPair in _servoUIControls)
             {
-                SetServoPresetControlsVisibility(servoPair.Value, value);
+                SetServoPresetControlsVisibility(servoPair.Key, value);
             }
         }
 
@@ -720,7 +720,7 @@ namespace InfernalRobotics.Gui
                     //also need to find the other Toggle button that opened it
                     foreach (var pair in _servoUIControls)
                     {
-                        var toggle = pair.Value.GetChild("ServoOpenPresetsToggle");
+                        var toggle = pair.Key.GetChild("ServoOpenPresetsToggle");
                         if (toggle == null || toggle == buttonRef)
                             continue;
                         toggle.GetComponent<Toggle>().isOn = false;
@@ -954,7 +954,7 @@ namespace InfernalRobotics.Gui
                 {
                     foreach (var pair in _servoUIControls)
                     {
-                        var servoBuildAidToggle = pair.Value.GetChild("ServoBuildAidToggle");
+                        var servoBuildAidToggle = pair.Key.GetChild("ServoBuildAidToggle");
                         servoBuildAidToggle.SetActive(v);
                     }
 
@@ -1106,7 +1106,7 @@ namespace InfernalRobotics.Gui
 
                 InitEditorServoControls(newServoLine, s);
 
-                _servoUIControls.Add(s, newServoLine);
+                _servoUIControls.Add(newServoLine, s);
             }
         }
 
@@ -1376,7 +1376,7 @@ namespace InfernalRobotics.Gui
             var prevGroup = ServoController.Instance.ServoGroups[currentGroupIndex - 1];
 
             var prevGroupUIControls = _servoGroupUIControls[prevGroup];
-            var servoUIControls = _servoUIControls[s];
+            var servoUIControls = servoLine;
             if (prevGroupUIControls == null || servoUIControls == null)
             {
                 //error
@@ -1400,7 +1400,7 @@ namespace InfernalRobotics.Gui
             var nextGroup = ServoController.Instance.ServoGroups[currentGroupIndex + 1];
 
             var nextGroupUIControls = _servoGroupUIControls[nextGroup];
-            var servoUIControls = _servoUIControls[s];
+            var servoUIControls = servoLine;
             if (nextGroupUIControls == null || servoUIControls == null)
             {
                 //error
@@ -1411,9 +1411,14 @@ namespace InfernalRobotics.Gui
             ServoController.ChangeServoGroup(ServoController.Instance.ServoGroups[currentGroupIndex], ServoController.Instance.ServoGroups[currentGroupIndex + 1], s);
             servoUIControls.transform.SetParent(nextGroupUIControls.GetChild("ServoGroupServosVLG").transform, false);
         }
+        /// <summary>
+        /// TODO: Rewrite it completely
+        /// </summary>
+        /// <param name="servo">Servo.</param>
+        /// <param name="value">If set to <c>true</c> value.</param>
         public void ShowServoAdvancedMode(IServo servo, bool value)
         {
-            var servoControls = _servoUIControls[servo];
+            var servoControls = _servoUIControls.First(pair => pair.Value == servo).Key;
             if (servoControls != null)
             {
                 var servoToggle = servoControls.GetChild("ServoShowOtherFieldsToggle").GetComponent<Toggle>();
@@ -1723,9 +1728,9 @@ namespace InfernalRobotics.Gui
 
                 foreach (var pair in _servoUIControls)
                 {
-                    if (!pair.Value.activeInHierarchy)
+                    if (!pair.Key.activeInHierarchy)
                         continue;
-                    UpdateServoReadoutsFlight(pair.Key, pair.Value);
+                    UpdateServoReadoutsFlight(pair.Value, pair.Key);
                 }
             }
             else 
@@ -1739,9 +1744,9 @@ namespace InfernalRobotics.Gui
                 //here we need to update servo statuses, servo positions and status of Locked and Inverted
                 foreach (var pair in _servoUIControls)
                 {
-                    if (!pair.Value.activeInHierarchy)
+                    if (!pair.Key.activeInHierarchy)
                         continue;
-                    UpdateServoReadoutsEditor(pair.Key, pair.Value);
+                    UpdateServoReadoutsEditor(pair.Value, pair.Key);
                 }
             }
                 

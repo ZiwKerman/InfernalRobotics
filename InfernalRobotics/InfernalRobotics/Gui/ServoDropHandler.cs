@@ -30,9 +30,9 @@ namespace InfernalRobotics.Gui
 
             foreach (var pair in WindowManager._servoUIControls)
             {
-                if (pair.Value == servoUIControls)
+                if (pair.Key == servoUIControls)
                 {
-                    var s = pair.Key;
+                    var s = pair.Value;
                     var oldGroupIndex = ServoController.Instance.ServoGroups.FindIndex(g => g.Servos.Contains(s));
 
                     if (oldGroupIndex < 0)
