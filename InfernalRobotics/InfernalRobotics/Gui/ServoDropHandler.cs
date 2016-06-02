@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using System.Collections;
+using System.Linq;
 using UnityEngine.EventSystems;
 using System;
 using InfernalRobotics.Command;
@@ -24,28 +25,47 @@ namespace InfernalRobotics.Gui
 
         public void onServoDrop(ServoDragHandler dragHandler)
         {
-            
+            //dragged item might be a copy
+
             var servoUIControls = dragHandler.draggedItem;
-            int insertAt = dragHandler.placeholder.transform.GetSiblingIndex();
+            var newGroupUIControls = dragHandler.dropZone.parent.gameObject;
 
-            foreach (var pair in WindowManager._servoUIControls)
+            ServoGroup newGroup = null;
+            foreach(var pair in WindowManager._servoGroupUIControls)
             {
-                if (pair.Key == servoUIControls)
+                if(pair.Value == newGroupUIControls)
                 {
-                    var s = pair.Value;
-                    var oldGroupIndex = ServoController.Instance.ServoGroups.FindIndex(g => g.Servos.Contains(s));
-
-                    if (oldGroupIndex < 0)
-                    {
-                        //error
-                        return;
-                    }
-
-                    var newGroupIndex = dragHandler.dropZone.parent.GetSiblingIndex();
-                    ServoController.ChangeServoGroup(ServoController.Instance.ServoGroups[oldGroupIndex], ServoController.Instance.ServoGroups[newGroupIndex], s);
+                    newGroup = pair.Key;
                     break;
                 }
+
             }
+
+            if(newGroup == null || dragHandler.originalGroup == null || dragHandler.servo == null)
+            {
+                //error
+                Logger.Log("[ServoDropHandler]: Null checks failed. " 
+                    + (newGroup == null ? "newGroup is null." : "newGroup.name = " + newGroup.name)
+                    + (dragHandler.originalGroup == null ? "originalGroup is null." : "originalGroup.name = " + dragHandler.originalGroup.name)
+                    + (dragHandler.servo == null ? "servo is null." : "servo.name = " + dragHandler.servo.Name) , Logger.Level.Debug);
+                return;
+            }
+
+            if(newGroup == dragHandler.originalGroup)
+            {
+                //nothing changed
+                return;
+            }
+
+            if(dragHandler.isCopy)
+            {
+                ServoController.AddServoToGroup(newGroup, dragHandler.servo);
+            }
+            else
+            {
+                ServoController.ChangeServoGroup(dragHandler.originalGroup, newGroup, dragHandler.servo);
+            }
+
         }
 
     }
